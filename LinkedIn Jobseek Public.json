@@ -1,0 +1,407 @@
+{
+  "name": "LinkedIn Jobseek Public",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        -32
+      ],
+      "id": "dfce98b3-f35e-4d2e-b855-e4f29a88f5d1",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "def feedRSSItems():\n  rss_feeds = [\n    \"\"\n  ]\n  output_items = []\n  for url in rss_feeds:\n    new_item = {\n      \"json\": {\n        \"url\": url\n      }\n    }\n    output_items.append(new_item)\n  print(output_items)\n  return output_items\n\nreturn feedRSSItems()"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -272,
+        -32
+      ],
+      "id": "986a00ec-d5eb-46b3-a258-b4f921dc2c71",
+      "name": "Code in Python (Beta)"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -64,
+        -32
+      ],
+      "id": "7fcc91cc-3262-4452-b166-6531c318ea8c",
+      "name": "RSS Read"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "python",
+        "pythonCode": "import json\n\ndef text_to_json(input_str):\n  if isinstance(input_str, str):\n    return json.loads(input_str)\n  return input_str\n  \ninput_txt = _input.item.json.content.parts[0].text\nreturn text_to_json(input_txt)"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -64
+      ],
+      "id": "3a7afe4c-9d70-4f87-9442-91bfd58d2ac1",
+      "name": "AI Output str to JSON"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.0-flash-001",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.0-flash-001"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "Give me a json with the structured data"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {
+          "systemMessage": "=You are a data extraction expert. Your task is to analyze the following job description and GUID, then extract the specified attributes. If a value is not found, use \"N/A\".\n\n**Job GUID:**\n{{ $('RSS Read').item.json.guid }}\n\n**Job Title:**\n{{ $json.title }}\n\n**Job Description Text:**\n{{ $('RSS Read').item.json.contentSnippet }}\n\n**Instructions:**\nExtract the following attributes and return your response ONLY in a single, clean JSON object:\n- **jobID**: Use the \"Job GUID\" provided above for this value.\n- **location**\n- **workMode** (Example: \"Remote\", \"Hybrid\", \"On-site\")\n- **salaryRange**\n- **benefits** (list them)\n- **contractType**\n- **technicalDescription** (summarize the technical requirements)\n- **techStack** (Create a JSON array of all specific technologies, programming languages, and frameworks mentioned. Example: [\"Python\", \"AWS S3\", \"Docker\", \"LangChain\"])\n\n**JSON Output Format:**\n{\n  \"jobID\": \"...\",\n  \"location\": \"...\",\n  \"workMode\": \"...\",\n  \"salaryRange\": \"...\",\n  \"benefits\": [],\n  \"contractType\": \"...\",\n  \"companyName\": \"...\",\n  \"industry\":\"...\",\n  \"technicalDescription\": \"...\",\n  \"techStack\": []\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        176,
+        -160
+      ],
+      "id": "57219ffc-9308-40dd-a87b-acd9d6d3af00",
+      "name": "Extractor Agent"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "# Loop over input items and add a new field called 'myNewField' to the JSON of each one\n\ndef link_cleaner(original_link: str):\n  if not original_link or not isinstance(original_link, str):\n    return original_link\n  base_link = f\"https://www.linkedin.com/jobs/view/\"\n  job_id = original_link.split(\"-\")[-1].strip()\n  return base_link + job_id\n\n\nnew_items = []\nfor item in _input.all():\n  # item.json.myNewField = 1\n  item_dict = {\n    \"json\": {\n      \"jobID\": item[\"json\"][\"guid\"],\n      \"title\": item[\"json\"][\"title\"],\n      \"link\": link_cleaner(item[\"json\"][\"link\"]),\n      \"pubDate\": item[\"json\"][\"pubDate\"],\n    }\n  }\n  new_items.append(item_dict)\n\n# return _input.all()\nreturn new_items"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        96
+      ],
+      "id": "fdda2969-9758-4942-9bcc-414d69b9f004",
+      "name": "Extract already structured data"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.0-flash-001",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.0-flash-001"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "Give me a well scored json output"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {
+          "systemMessage": "=You are a strict technical recruiter and career analyst. Your primary goal is to calculate an accurate \"fit score\" by rigorously comparing a candidate's skills against a job's technical requirements.\n\n**CANDIDATE PROFILE ():**\n- **Role and Experience**: \n- **Core Skills:**\n  \n\n**STRUCTURED JOB DATA:**\n{{ $json.content.parts[0].text }}\n\n**INSTRUCTIONS:**\n\n1.  **Calculate Fit Score (Primary Goal):** Analyze the `technicalDescription` and `techStack` from the job data. Compare them STRICTLY against Endy's Core Skills. Calculate a `fit_score` from 1 to 10 based on this logic:\n    * **9-10:** Perfect or near-perfect match. The job requires multiple core skills, especially the combination of Python (FastAPI), AI Systems (RAG/Agents), and AWS.\n    * **7-8:** Strong match. The job requires Python and at least one other core area (AI or Cloud).\n    * **5-6:** Decent match. The job requires general Python and ML knowledge but doesn't specify Endy's key frameworks or paradigms.\n    * **1-4:** Poor match. The job requires technologies Endy does not have (e.g., other clouds, different programming languages) or is too junior/senior.\n\n2.  **Justify the Score (Secondary Goal):** Based on your analysis for the score, generate the following:\n    * **`matchingSkills`:** A JSON array of skills from the job's `techStack` that Endy possesses.\n    * **`missingSkills`:** A JSON array of key skills required by the job that are NOT in Endy's core skills.\n    * **`key_points`:** A brief, bulleted list of 2-3 points explaining *why* you gave that specific score.\n\n**Return ONLY a single, clean JSON object:**\n{\n  \"jobID\": \"\",\n  \"fit_score\": 0,\n  \"matchingSkills\": [],\n  \"missingSkills\": [],\n  \"key_points\": \"...\"\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        576,
+        -240
+      ],
+      "id": "95325a24-2466-42ea-a201-eb86af352122",
+      "name": "FitScorer",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "D3dTrADtXIetxipx",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import json\n\ndef run(items):\n    normalized_items = []\n    # 'items' is a list of all items coming into the node\n    for item in items:\n        # Step 1: Parse the text from the AI model into a Python object\n        try:\n            # The AI's text response is in item['json']['content']['parts'][0]['text']\n            ai_response_text = item['json']['content']['parts'][0]['text']\n            data = json.loads(ai_response_text)\n        except (json.JSONDecodeError, KeyError) as e:\n            # If parsing fails, skip this item and print an error for debugging\n            print(f\"Error parsing JSON: {e}, for item: {item}\")\n            continue\n\n        # Step 2: Normalize the structure (the logic from before)\n        # This handles cases where the JSON is nested in a 'value' array\n        if isinstance(data, list):\n             # If the AI returned a list, take the first object from it\n            unwrapped_data = data[0]\n            normalized_items.append({'json': unwrapped_data})\n        else:\n            # If it's already a correct object, just pass it through\n            normalized_items.append({'json': data})\n            \n    return normalized_items\n\n# n8n will execute the run() function by default\nreturn run(items)"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        -240
+      ],
+      "id": "627efc42-89fb-4b7d-ad22-9b86612f4e73",
+      "name": "Fit Scorer txt to JSON"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "jobID",
+        "joinMode": "keepEverything",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        944,
+        80
+      ],
+      "id": "f44ba2c7-a776-4af4-ae7f-51734bf3fdd9",
+      "name": "Merge extracted data"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "jobID",
+        "joinMode": "keepEverything",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1200,
+        -80
+      ],
+      "id": "937caff1-573f-4d3a-8080-7ad5d31a0307",
+      "name": "Merge extracted and fit score data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "33bdeb10-4bcc-435e-9fbf-5f75ac319d08",
+              "leftValue": "={{ $json.fit_score }}",
+              "rightValue": 8,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1408,
+        -80
+      ],
+      "id": "a63c58ce-c424-4e67-8069-d90faa02e04c",
+      "name": "If score >= 8"
+    },
+    {
+      "parameters": {
+        "chatId": "7808316302",
+        "text": "=*Hey Endy!!* \n*Una buena oportunidad de trabajo para ti (Puntuación: {{ $json.fit_score }}/10)*\n\n**Puesto:**  {{ $json.title }}\n\n*Puntos Clave:* \n{{ $json.key_points }}\n\n[Ver oferta]({{ $json.link }})",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1616,
+        -192
+      ],
+      "id": "58bc0306-b270-44a3-8a57-eb393cfe9ec0",
+      "name": "Send a text message",
+      "webhookId": "e9ac73cf-6cd8-4604-bcfd-ed3f4e7c6b99"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1616,
+        16
+      ],
+      "id": "48b544ab-0c74-435b-a3c0-71fcac44ba97",
+      "name": "Append or update row in sheet"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Code in Python (Beta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python (Beta)": {
+      "main": [
+        [
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Extract already structured data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extractor Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extractor Agent": {
+      "main": [
+        [
+          {
+            "node": "AI Output str to JSON",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "FitScorer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Output str to JSON": {
+      "main": [
+        [
+          {
+            "node": "Merge extracted data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract already structured data": {
+      "main": [
+        [
+          {
+            "node": "Merge extracted data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "FitScorer": {
+      "main": [
+        [
+          {
+            "node": "Fit Scorer txt to JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fit Scorer txt to JSON": {
+      "main": [
+        [
+          {
+            "node": "Merge extracted and fit score data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge extracted data": {
+      "main": [
+        [
+          {
+            "node": "Merge extracted and fit score data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge extracted and fit score data": {
+      "main": [
+        [
+          {
+            "node": "If score >= 8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If score >= 8": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a90c5f9a-598a-4173-9ca1-c63b329cfcbc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "eec6b7495f41258403d831747f1903690d2472ae60c2a77433f9d60c91409837"
+  },
+  "id": "jaDO6XXTGD6dJAEY",
+  "tags": []
+}
