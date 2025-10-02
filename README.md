@@ -16,5 +16,4 @@ Feel free to explore, contribute, or reach out if you have questions!
 
 ## Connect with Me
 
-[Endybits on LinkedIn](https://www.linkedin.com/in/endyb/)
-# jobseek-outomations
+[Endy Bermúdez on LinkedIn](https://www.linkedin.com/in/endyb/)
